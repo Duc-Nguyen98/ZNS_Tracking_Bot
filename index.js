@@ -4,6 +4,7 @@ const UAParser = require('ua-parser-js');
 
 const app = express();
 const PORT = 3000;
+require('dotenv').config();
 
 app.set('view engine', 'ejs');
 app.set('views', __dirname + '/views'); // thư mục chứa file .ejs
@@ -11,12 +12,8 @@ app.use(express.static('public'));
 
 
 // Token Telegram & danh sách chat_id
-const TELEGRAM_TOKEN = '7903084653:AAFzYR7ZWNK7Zq_elua_tB1fksolyTtzoK8';
-const CHAT_IDS = [
-  '5085998678', // bạn
-  //   '6284672384'
-  // '1234567890', // đối tác khác nếu cần
-];
+const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN;
+const CHAT_IDS = (process.env.CHAT_IDS || '').split(',').map(id => id.trim());
 
 // Bộ nhớ tạm để chống spam IP
 const recentIPs = new Map();
@@ -28,86 +25,52 @@ function isSpam(ip) {
   recentIPs.set(ip, now);
   return (now - last) < 3000; // dưới 3 giây coi là spam
 }
-
 app.get('/', async (req, res) => {
-  // 🛡️ Kiểm tra User-Agent để chặn bot/trình duyệt preview link (Zalo, Facebook...)
+  const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
   const userAgent = req.headers['user-agent'] || '';
-  const isBot = /bot|crawl|spider|facebook|whatsapp|telegram|twitter/i.test(userAgent);
-  if (isBot) {
-    return res.send('<pre>🤖 Bot hoặc hệ thống kiểm tra link – không xử lý.</pre>');
-  }
+  const referer = req.headers['referer'] || '';
+  const time = new Date().toISOString();
 
-  // 🧠 Giải mã UID từ base64 (nếu có)
-  let uidRaw = req.query.uid || '';
-  let uid = 'Không có UID';
-  try {
-    const decodedBase64 = decodeURIComponent(uidRaw);
-    uid = Buffer.from(decodedBase64, 'base64').toString('utf-8');
-  } catch (err) {
-    console.warn('⚠️ UID không hợp lệ hoặc không thể giải mã:', err.message);
-  }
+  const uid = req.query.uid || 'unknown';
+  const isBot = /bot|facebook|zalo|telegram|twitter|preview|crawl|spider/i.test(userAgent);
 
-  // 🧱 Chống spam IP
-  const ipCheck = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
-  if (isSpam(ipCheck)) {
-    return res.send('<pre>⚠️ Bạn đang truy cập quá nhanh. Vui lòng chờ giây lát.</pre>');
-  }
 
-  const port = req.socket.remotePort;
-  const time = new Date().toISOString().replace('T', ' ').split('.')[0];
+  // 📤 Gửi thông tin về Telegram
+  const message = `
+📡 *ZNS Link Preview Detected*
+🧠 Bot: ${isBot ? '✅' : '❌'}
+👤 UID: ${uid}
+🌐 IP: ${ip}
+🕒 Time: ${time}
+🔍 User-Agent: ${userAgent}
+🔗 Referer: ${referer || 'Không có'}
+`;
+  console.log('User-Agent:', userAgent);
 
-  // 📱 Phân tích thiết bị
-  const parser = new UAParser(userAgent);
-  const device = parser.getDevice();
-  const phone = device.model ? `${device.vendor || ''} ${device.model}`.trim() : 'PC / Laptop';
 
-  try {
-    // 🌍 Lấy thông tin IP từ ip-api
-    const ipInfo = await axios.get(`http://ip-api.com/json/`);
-    const ip = ipInfo.data.query || 'Unknown';
-    const isp = ipInfo.data.isp || 'Unknown';
-    const country = ipInfo.data.country || 'Unknown';
-    const city = ipInfo.data.city || 'Unknown';
-    const zip = ipInfo.data.zip || 'Unknown';
-    const lat = ipInfo.data.lat || 'Unknown';
-    const lon = ipInfo.data.lon || 'Unknown';
-    const timezone = ipInfo.data.timezone || 'Unknown';
-
-    // 📱 Phân tích thiết bị
-    const output = `
-📥 *New Visitor From ZNS*
-📞 UID (SĐT): *${uid}*
-🌟 IP: \`${ip}\` - port: \`${port}\`
-🌐 ISP: *${isp}*
-📱 Device: *${phone}*
-📍 Location: ${city}, ${country} (${zip})
-📌 Lat/Lon: [${lat}, ${lon}](https://maps.google.com/?q=${lat},${lon})
-🕒 Time: ${time} (${timezone})
-  `.trim();
-
-    for (const chatId of CHAT_IDS) {
-      try {
-        await axios.post(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
-          chat_id: chatId,
-          text: output,
-          parse_mode: 'Markdown'
-        });
-        console.log(`✅ Gửi thành công đến chat_id: ${chatId}`);
-      } catch (sendErr) {
-        console.error(`❌ Lỗi gửi đến chat_id: ${chatId} - ${sendErr.message}`);
-      }
+  for (const chatId of CHAT_IDS) {
+    try {
+      await axios.post(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
+        chat_id: chatId,
+        text: message,
+        parse_mode: 'Markdown'
+      });
+      console.log(`✅ Đã gửi thông tin preview đến ${chatId}`);
+    } catch (err) {
+      console.error(`❌ Gửi lỗi: ${chatId}`, err.message);
     }
-
-  } catch (err) {
-    // 👉 BÁO lỗi nhưng không dừng render trang
-    console.error('❌ Lỗi trong quá trình lấy IP hoặc gửi Telegram:', err.message);
   }
 
-  // 🧾 Dù lỗi hay không, vẫn render giao diện
-  res.render('coming_soon', {
-    countdownDeadline: new Date('2025-08-08T23:59:59').toISOString()
+  // Trả về ảnh rỗng (tracking pixel)
+  const img = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/P7vT3QAAAABJRU5ErkJggg==',
+    'base64'
+  );
+  res.writeHead(200, {
+    'Content-Type': 'image/png',
+    'Content-Length': img.length,
   });
-
+  res.end(img);
 });
 
 app.listen(PORT, '0.0.0.0', () => {
