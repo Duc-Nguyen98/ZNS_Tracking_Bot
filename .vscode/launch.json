@@ -1,0 +1,10 @@
+{
+    "configurations": [
+        {
+            "type": "chrome",
+            "name": "http://localhost:3000/uid?uid=MDM5NDk2NjI5OA%3D%3D",
+            "request": "launch",
+            "url": "http://localhost:3000/uid?uid=MDM5NDk2NjI5OA%3D%3D"
+        }
+    ]
+}

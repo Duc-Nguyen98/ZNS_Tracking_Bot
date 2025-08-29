@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Tạo link UID</title>
+</head>
+<body>
+  <h2>Nhập số điện thoại:</h2>
+  <!-- views/client/form.ejs -->
+<form action="/generate" method="POST">
+  <label>Nhập số điện thoại (mỗi dòng hoặc cách nhau bằng dấu phẩy):</label><br>
+  <textarea name="phones" rows="10" cols="40" placeholder="0987654321, 0912345678..."></textarea><br>
+  <button type="submit">Tạo link</button>
+</form>
+
+</body>
+</html>

@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+<body>
+    <h2>Kết quả tạo link</h2>
+<ul>
+  <% results.forEach(item => { %>
+    <li>
+      <strong><%= item.phone %></strong> :
+      <% if (item.valid) { %>
+        ✅ <a href="<%= item.link %>" target="_blank"><%= item.link %></a>
+      <% } else { %>
+        ❌ Số điện thoại không hợp lệ
+      <% } %>
+    </li>
+  <% }) %>
+</ul>
+
+<a href="/">🔙 Quay lại</a>
+
+</body>
+</html>
