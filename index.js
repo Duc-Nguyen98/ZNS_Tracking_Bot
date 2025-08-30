@@ -2,7 +2,7 @@ const express = require('express');
 const axios = require('axios');
 const UAParser = require('ua-parser-js');
 const rateLimit = require('express-rate-limit');
-const axiosRetry = require('axios-retry');  // Import đúng cách cho phiên bản 4.x.x
+const axiosRetry = require('axios-retry');
 require('dotenv').config();
 
 const app = express();
@@ -68,7 +68,7 @@ function getClientIP(req) {
 
 // Cấu hình retry cho axios
 axiosRetry(axios, {
-  retries: 3,  // Số lần thử lại
+  retries: 5,  // Số lần thử lại tăng lên
   retryDelay: axiosRetry.exponentialDelay,  // Thử lại với độ trễ tăng dần
   retryCondition: (error) => {
     return error.code === 'ECONNABORTED' || error.response === undefined;  // Retry khi có lỗi kết nối
