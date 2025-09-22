@@ -1,0 +1,87 @@
+[
+  {
+    "phone_id": "84393177289",
+    "msgId": "msg_test_001",
+    "sentAt": 1758500294856
+  },
+  {
+    "phone_id": "84393177289",
+    "template_id": "482945",
+    "campaign_id": "cmp-pretest",
+    "msgId": "1149c729dd24527c0b33",
+    "sentAt": 1758500272543
+  },
+  {
+    "phone_id": "84393177289",
+    "template_id": "482945",
+    "campaign_id": "cmp-pretest",
+    "msgId": "775b04b913b49cecc5a3",
+    "sentAt": 1758500301779
+  },
+  {
+    "phone_id": "84393177289",
+    "msgId": "msg_test_005",
+    "sentAt": 1758501240034
+  },
+  {
+    "phone_id": "84393177289",
+    "template_id": "482945",
+    "campaign_id": "cmp-pretest",
+    "msgId": "d6c16c3f9c32136a4a25",
+    "sentAt": 1758500522841
+  },
+  {
+    "phone_id": "84393177289",
+    "template_id": "482945",
+    "campaign_id": "cmp-pretest",
+    "msgId": "9461af07b40b3b53621c",
+    "sentAt": 1758500872801
+  },
+  {
+    "phone_id": "84393177289",
+    "msgId": "msg_test_006",
+    "sentAt": 1758501247869
+  },
+  {
+    "phone_id": "84393177289",
+    "template_id": "482945",
+    "campaign_id": "cmp-pretest",
+    "msgId": "8f967dd32ac0a598fcd7",
+    "sentAt": 1758501311076
+  },
+  {
+    "phone_id": "84393177289",
+    "template_id": "482945",
+    "campaign_id": "cmp-pretest",
+    "msgId": "d4d61eaab4b93be162ae",
+    "sentAt": 1758501764494
+  },
+  {
+    "phone_id": "84393177289",
+    "template_id": "482945",
+    "campaign_id": "cmp-pretest",
+    "msgId": "5e2eeca6a1312e697726",
+    "sentAt": 1758537769854
+  },
+  {
+    "phone_id": "84357738634",
+    "template_id": "482945",
+    "campaign_id": "cmp-pretest",
+    "msgId": "0149dc79c4ee4bb612f9",
+    "sentAt": 1758537821082
+  },
+  {
+    "phone_id": "84337100373",
+    "template_id": "482945",
+    "campaign_id": "cmp-pretest",
+    "msgId": "156057a6e2316d693426",
+    "sentAt": 1758538032862
+  },
+  {
+    "phone_id": "84902165865",
+    "template_id": "482945",
+    "campaign_id": "cmp-pretest",
+    "msgId": "c923f1d77268fd30a47f",
+    "sentAt": 1758549666212
+  }
+]
