@@ -1,0 +1,20 @@
+curl -sS -X POST 'http://localhost:3002/zns/send-batch' \
+  -H 'Content-Type: application/json' \
+  --data-raw '{
+    "access_token": "0OAO5F1Xf2u6WvSM-MUlAGY7bnVzUQHJ2DsMBu9UmcuSsuidcKQrPZkx-1gK685X9ABRAg4VvsyzlzLKZHYjEd_bxNQ9LwKm6S7zQB54sr57fP5p-oNR7NkPablgAkCbMiYaVlrwx3zfwArfmdNFB5pfWqlTRiPtTCdwJi13gtLD_98TqtpJMLZ6ZZdtUlzzOVt51PP6d50AugyLYs3yG7Zdl7VKGOCl9FU-RgvNxG8_pT5UkdAI6n_isY2yHQ1BIy_c8TfSl7bHoVz7uIYY41ANct6RCjmf2i-R5vnRgInYu_ThbLIuBWJ-v1237w1r9uBSDDWrXrnujCWy_mcG1r-Sya3eFQqZOfNbPDGltLraYRuscWRXV2Mvhn2F6PPmSOls4l0yitzNZyX1vogIEaJBuNjbnj0B3_Dyfou",
+    "template_id": "482945",
+    "campaign_id": "cmp-pretest",
+    "items": [
+      {
+        "phone": "0902165865",
+        "template_data": {
+          "customer_name": "Nguyễn Lê Minh Khoa",
+          "product_name": "Bàn phím Razer",
+          "order_code": "TP-34512",
+          "order_date": "13:00:00 14/02/2021",
+          "payment_status": "giao dịch thành công",
+          "phone_hash": "Nguyen%20Van%20A"
+        }
+      }
+    ]
+  }'
