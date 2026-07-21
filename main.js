@@ -40,7 +40,7 @@ async function processQueue() {
 
 // =================== WEBHOOK ZALO ===================
 app.post('/zns/zalo-webhook', (req, res) => {
-  console.log('📥 Webhook nhận:', req.body);
+  console.log('📥 Webhook nhận:', JSON.stringify(req.body));
   res.status(200).send('OK');
 
   if (req.body?.event_name !== 'user_received_message') {
