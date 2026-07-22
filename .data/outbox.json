@@ -90,5 +90,18 @@
     "campaign_id": "cmp-thanh-toan-no-1",
     "msgId": "a48792ceedd4518d08c2",
     "sentAt": 1784640104391
+  },
+  {
+    "phone_id": "84393177289",
+    "template_id": "603674",
+    "campaign_id": "postman-test-603674",
+    "channel": "zns",
+    "tracking_id": "d5e0d6e2-b1ff-4a54-a019-8516b1e7cc24",
+    "status": "sent",
+    "msgId": "9a4570f749f9f7a0aeef",
+    "sentAt": 1784743696540,
+    "deliveredAt": null,
+    "readStatus": "unavailable",
+    "readConfirmed": false
   }
 ]
