@@ -83,5 +83,12 @@
     "campaign_id": "cmp-pretest",
     "msgId": "c923f1d77268fd30a47f",
     "sentAt": 1758549666212
+  },
+  {
+    "phone_id": "84902165865",
+    "template_id": "603674",
+    "campaign_id": "cmp-thanh-toan-no-1",
+    "msgId": "a48792ceedd4518d08c2",
+    "sentAt": 1784640104391
   }
 ]
