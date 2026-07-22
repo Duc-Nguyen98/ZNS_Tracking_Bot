@@ -1,8 +1,14 @@
 function pad(n){ return n < 10 ? '0'+n : ''+n; }
-function formatTimestamp(ts){
+function normalizeTimestampMs(ts){
+  if (ts === undefined || ts === null || ts === '') return null;
   const raw = Number(ts);
   // Zalo có thể trả epoch theo giây (10 chữ số) hoặc millisecond (13 chữ số).
-  const epochMs = Number.isFinite(raw) && raw < 1e12 ? raw * 1000 : raw;
+  if (!Number.isFinite(raw)) return null;
+  return raw < 1e12 ? raw * 1000 : raw;
+}
+function formatTimestamp(ts){
+  const epochMs = normalizeTimestampMs(ts);
+  if (epochMs === null) return null;
   const d = new Date(epochMs);
   if (Number.isNaN(d.getTime())) return null;
   const hh = pad(d.getHours()), mm = pad(d.getMinutes()), ss = pad(d.getSeconds());
@@ -16,4 +22,4 @@ function normalizePhoneE164VN(input){
   if (!s.startsWith('84')) s = '84' + s;
   return s;
 }
-module.exports = { formatTimestamp, normalizePhoneE164VN };
+module.exports = { formatTimestamp, normalizePhoneE164VN, normalizeTimestampMs };

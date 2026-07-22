@@ -1,0 +1,15 @@
+curl --location 'http://localhost:3002/zns/zalo-webhook' \
+--header 'Content-Type: application/json' \
+--data-raw '{
+  "app_id": "1743556593977626805",
+  "event_name": "user_received_message",
+  "timestamp": "1784737463000",
+  "recipient": {
+    "id": "84393177289"
+  },
+  "message": {
+    "msg_id": "REPLACE_WITH_REAL_MESSAGE_ID",
+    "delivery_time": "1784737462633",
+    "tracking_id": "REPLACE_WITH_TRACKING_ID"
+  }
+}'

@@ -10,7 +10,10 @@ async function sendToTelegram(data) {
   const clean = Object.fromEntries(
     Object.entries(data).filter(([, value]) => value !== undefined)
   );
-  const msg = '📩 Zalo Webhook Data:\n' + JSON.stringify(clean, null, 2);
+  const title = clean.event_name === 'user_received_message'
+    ? '📬 ZNS đã tới thiết bị (chưa xác nhận đã đọc):\n'
+    : '📩 Zalo Webhook Data:\n';
+  const msg = title + JSON.stringify(clean, null, 2);
   const chunks = msg.match(/[\s\S]{1,4000}/g) || [msg];
   const failures = [];
   let sent = 0;

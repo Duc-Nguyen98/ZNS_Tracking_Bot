@@ -1,9 +1,6 @@
-const { formatTimestamp } = require('./format');
+const { formatTimestamp, normalizeTimestampMs } = require('./format');
 
-const ZNS_TRACKING_EVENTS = new Set([
-  'user_received_message',
-  'user_seen_message'
-]);
+const ZNS_RECEIVED_EVENT = 'user_received_message';
 
 function normalizeId(value) {
   if (value === undefined || value === null || value === '') return null;
@@ -22,57 +19,116 @@ function getMessageIds(body = {}) {
   return [...new Set(ids.map(normalizeId).filter(Boolean))];
 }
 
-function isZnsTrackingEvent(eventName) {
-  return ZNS_TRACKING_EVENTS.has(String(eventName || ''));
+function isZnsReceivedEvent(eventName) {
+  return String(eventName || '') === ZNS_RECEIVED_EVENT;
 }
 
-function getStatus(eventName) {
-  if (eventName === 'user_received_message') return 'delivered';
-  if (eventName === 'user_seen_message') return 'seen';
-  if (String(eventName || '').startsWith('user_send_')) return 'inbound_user_event';
-  return 'other_event';
+function isSha256(value) {
+  return /^[a-f0-9]{64}$/i.test(String(value || ''));
+}
+
+function isVietnamPhone(value) {
+  return /^84\d{8,11}$/.test(String(value || ''));
+}
+
+function getEventSemantics(eventName) {
+  if (eventName === ZNS_RECEIVED_EVENT) {
+    return {
+      event_scope: 'zns',
+      status: 'delivered',
+      status_label: 'Đã nhận trên thiết bị',
+      read_status: 'unavailable',
+      read_confirmed: false,
+      clicked_status: 'unavailable_without_user_action'
+    };
+  }
+
+  if (eventName === 'user_seen_message') {
+    return {
+      event_scope: 'oa_messaging',
+      status: 'seen',
+      status_label: 'Đã xem tin nhắn OA',
+      read_status: 'seen',
+      read_confirmed: true,
+      clicked_status: 'unknown'
+    };
+  }
+
+  if (String(eventName || '').startsWith('user_send_')) {
+    return {
+      event_scope: 'oa_messaging',
+      status: 'inbound_user_event',
+      status_label: 'Người dùng tương tác với OA',
+      read_status: 'unknown',
+      read_confirmed: false,
+      clicked_status: 'unknown'
+    };
+  }
+
+  return {
+    event_scope: 'other',
+    status: 'other_event',
+    status_label: 'Sự kiện khác',
+    read_status: 'unknown',
+    read_confirmed: false,
+    clicked_status: 'unknown'
+  };
 }
 
 function extractZaloData(body = {}) {
-  const eventName = body?.event_name || null;
+  const eventName = normalizeId(body?.event_name);
   const senderId = normalizeId(body?.sender?.id);
   const recipientId = normalizeId(body?.recipient?.id);
-
-  // Với event nhận ZNS, actor là recipient. Với event seen/user_send_*, actor là sender.
-  const actorId = eventName === 'user_received_message'
-    ? recipientId
-    : (senderId || recipientId);
-  const isPhone = /^84\d{8,11}$/.test(actorId || '');
-
-  const uidByApp = normalizeId(
+  const userId = normalizeId(body?.user_id);
+  const userIdByApp = normalizeId(
     body?.user_id_by_app ||
     body?.sender?.user_id_by_app ||
-    body?.recipient?.user_id_by_app ||
-    (!isPhone ? actorId : null)
+    body?.recipient?.user_id_by_app
   );
   const messageIds = getMessageIds(body);
+  const semantics = getEventSemantics(eventName);
+  const deliveryTimeRaw = body?.message?.delivery_time ?? null;
+  const trackingId = normalizeId(body?.message?.tracking_id || body?.tracking_id);
+  const recipientPhone = isVietnamPhone(recipientId) ? recipientId : null;
+  const recipientPhoneHash = isSha256(recipientId) ? recipientId : null;
+  const payloadVariant = eventName !== ZNS_RECEIVED_EVENT
+    ? 'other_event'
+    : (deliveryTimeRaw !== null ? 'zns_delivery' : 'generic_message_delivery');
 
   return {
+    app_id: normalizeId(body?.app_id),
     event_name: eventName,
-    status: getStatus(eventName),
-    tracked_zns_event: isZnsTrackingEvent(eventName),
-    source: isPhone ? 'phone' : 'user_id',
-    phone: isPhone ? actorId : null,
-    user_id_by_app: uidByApp,
+    tracked_zns_event: payloadVariant === 'zns_delivery',
+    event_name_supported: isZnsReceivedEvent(eventName),
+    payload_variant: payloadVariant,
+    ...semantics,
+    user_id: userId,
+    user_id_by_app: userIdByApp,
+    sender_id: senderId,
+    recipient_id: recipientId,
+    recipient_phone: recipientPhone,
+    recipient_phone_hash: recipientPhoneHash,
     msg_id: messageIds[0] || null,
     msg_ids: messageIds,
     receiver_device: body?.receiver_device || null,
+    tracking_id: trackingId,
+    delivery_time_raw: deliveryTimeRaw,
+    delivery_time_ms: normalizeTimestampMs(deliveryTimeRaw),
+    timestamp_ms: normalizeTimestampMs(body?.timestamp),
     timestamp: body?.timestamp ? formatTimestamp(body.timestamp) : null,
-    link_href: uidByApp ? `https://zalo.me/${uidByApp}` : null,
     message_text: body?.message?.text || null,
-    _raw_sender_id: senderId,
-    _raw_recipient_id: recipientId
+    read_warning: eventName === ZNS_RECEIVED_EVENT
+      ? 'Đây là bằng chứng ZNS đã tới thiết bị, không phải bằng chứng người dùng đã mở hoặc đọc.'
+      : null
   };
 }
 
 module.exports = {
-  ZNS_TRACKING_EVENTS,
+  ZNS_RECEIVED_EVENT,
   extractZaloData,
+  getEventSemantics,
   getMessageIds,
-  isZnsTrackingEvent
+  isZnsReceivedEvent,
+  isSha256,
+  isVietnamPhone
 };

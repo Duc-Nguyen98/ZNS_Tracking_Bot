@@ -1,13 +1,20 @@
 const axios = require('axios');
-const { putOutbox, pushPending } = require('../store');
+const { randomUUID } = require('crypto');
+const { putOutbox } = require('../store');
 const { normalizePhoneE164VN } = require('../utils/format');
 
 const ZALO_ENDPOINT = 'https://business.openapi.zalo.me/message/template';
 
-async function sendTemplateOne({ accessToken, phone, template_id, template_data, campaign_id }) {
+async function sendTemplateOne({ accessToken, phone, template_id, template_data, campaign_id, tracking_id }) {
   const phoneE164 = normalizePhoneE164VN(phone);
   const headers = { 'Content-Type': 'application/json', 'access_token': accessToken };
-  const payload = { phone: phoneE164, template_id, template_data: template_data || {} };
+  const trackingId = tracking_id || randomUUID();
+  const payload = {
+    phone: phoneE164,
+    template_id,
+    template_data: template_data || {},
+    tracking_id: trackingId
+  };
 
   try {
     const res = await axios.post(ZALO_ENDPOINT, payload, { headers, timeout: 15000 });
@@ -25,11 +32,23 @@ async function sendTemplateOne({ accessToken, phone, template_id, template_data,
       return { ok: false, phone_id: phoneE164, message_id: msgId, error: res?.data || { message: 'No msg_id' } };
     }
 
-    // Lưu mapping cứng và đẩy vào pending window
-    putOutbox(msgId, { phone_id: phoneE164, template_id, campaign_id });
-    pushPending({ phone_id: phoneE164, template_id, campaign_id });
+    // Lưu mapping chắc chắn msg_id -> số điện thoại ngay khi gửi thành công.
+    putOutbox(msgId, {
+      phone_id: phoneE164,
+      template_id,
+      campaign_id,
+      channel: 'zns',
+      tracking_id: trackingId,
+      status: 'sent'
+    });
 
-    return { ok: true, phone_id: phoneE164, message_id: msgId };
+    return {
+      ok: true,
+      status: 'sent',
+      phone_id: phoneE164,
+      message_id: msgId,
+      tracking_id: trackingId
+    };
   } catch (e) {
     return { ok: false, phone_id: phoneE164, error: e?.response?.data || e.message };
   }
@@ -42,7 +61,12 @@ async function sendTemplateBatch(items, { accessToken, template_id, campaign_id,
     while (queue.length) {
       const it = queue.shift();
       const r = await sendTemplateOne({
-        accessToken, phone: it.phone, template_id, template_data: it.template_data || {}, campaign_id
+        accessToken,
+        phone: it.phone,
+        template_id,
+        template_data: it.template_data || {},
+        campaign_id,
+        tracking_id: it.tracking_id || null
       });
       results.push({ ...r, phone: it.phone });
     }
