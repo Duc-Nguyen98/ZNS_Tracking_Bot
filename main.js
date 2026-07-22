@@ -1,4 +1,5 @@
 const express = require('express');
+const crypto = require('crypto');
 require('dotenv').config();
 
 const {
@@ -6,6 +7,18 @@ const {
 } = require('./utils/zalo');
 const { sendToTelegram } = require('./utils/telegram');
 const { sendTemplateBatch } = require('./services/zns');
+const {
+  exchangeAuthorizationCode,
+  refreshAccessToken,
+  getAccessToken,
+  publicTokenStatus
+} = require('./services/zalo-oauth');
+const {
+  listUserFields,
+  createUserField,
+  updateUserField,
+  deleteUserField
+} = require('./services/zalo-user-fields');
 const { normalizePhoneE164VN } = require('./utils/format');
 
 const {
@@ -26,9 +39,48 @@ const path = require('path');
 app.use(express.static(path.join(__dirname, 'public'))); // public chứa file zalo_verifier....html
 
 app.use(express.json({ limit: '1mb' }));
+app.use(express.urlencoded({ extended: false, limit: '64kb' }));
 
 app.get('/health', (_, res) => res.status(200).send('ok'));
 app.get('/', (_, res) => res.status(200).send('Service ready.'));
+
+function secureEqualText(left, right) {
+  const leftBuffer = Buffer.from(String(left || ''));
+  const rightBuffer = Buffer.from(String(right || ''));
+  return leftBuffer.length === rightBuffer.length &&
+    crypto.timingSafeEqual(leftBuffer, rightBuffer);
+}
+
+// OAuth callback cấp OA Access Token. Đây KHÔNG phải URL nhận webhook sự kiện.
+app.get('/oauth/zalo/callback', async (req, res) => {
+  try {
+    if (req.query.error) {
+      return res.status(400).json({
+        ok: false,
+        error: 'Zalo từ chối cấp quyền',
+        error_code: String(req.query.error)
+      });
+    }
+
+    const expectedState = process.env.ZALO_OAUTH_STATE;
+    if (!expectedState) {
+      return res.status(500).json({ ok: false, error: 'Server chưa cấu hình ZALO_OAUTH_STATE' });
+    }
+    if (!secureEqualText(req.query.state, expectedState)) {
+      return res.status(400).json({ ok: false, error: 'OAuth state không hợp lệ' });
+    }
+
+    const tokenBundle = await exchangeAuthorizationCode(req.query.code);
+    return res.status(200).json({
+      ok: true,
+      message: 'OA đã cấp quyền; token đã được lưu an toàn trên server.',
+      token: publicTokenStatus(tokenBundle)
+    });
+  } catch (error) {
+    console.error('❌ Zalo OAuth callback error:', error.message);
+    return res.status(502).json({ ok: false, error: error.message, code: error.code || null });
+  }
+});
 
 // ======= queue gửi Telegram để không bị flood =======
 const messageQueue = [];
@@ -77,7 +129,11 @@ function handleUserIdentityEvent(body, data, webhookReceivedAt, res) {
     phoneId = matchedPhones[0];
     phoneLinkSource = data.event_name === 'user_seen_message'
       ? 'seen_message_id'
-      : 'reply_reference_message_id';
+      : (data.event_name === 'user_received_message'
+          ? 'received_message_id'
+          : (String(data.event_name || '').startsWith('oa_send_')
+              ? 'oa_sent_message_id'
+              : 'reply_reference_message_id'));
   } else if (matchedPhones.length > 1) {
     data.identity_link_warning = 'Nhiều SĐT khớp msg_ids; không tự gán UID để tránh sai người.';
   }
@@ -116,9 +172,15 @@ function handleUserIdentityEvent(body, data, webhookReceivedAt, res) {
   data.identity_link_source = identity?.phone_link_source || null;
   data.correlated_outbox_records = attachedRecords;
   data.webhook_received_at = webhookReceivedAt;
-  data.notice = data.event_name === 'user_seen_message'
-    ? 'Đã thu ID từ sự kiện xem tin nhắn OA; không dùng event này để khẳng định ZNS đã được đọc.'
-    : 'Đã thu ID từ tin nhắn người dùng gửi cho OA.';
+  if (data.event_name === 'user_seen_message') {
+    data.notice = 'Đã thu ID từ sự kiện người dùng xem tin nhắn OA.';
+  } else if (data.event_name === 'user_received_message') {
+    data.notice = 'Đã thu ID từ sự kiện người dùng nhận tin nhắn OA.';
+  } else if (String(data.event_name || '').startsWith('oa_send_')) {
+    data.notice = 'Đã thu ID người nhận từ sự kiện OA gửi tin nhắn.';
+  } else {
+    data.notice = 'Đã thu ID từ tin nhắn người dùng gửi cho OA.';
+  }
 
   const dedupe = rememberWebhookEvent(buildIdentityEventKey(data), webhookReceivedAt);
   data.webhook_duplicate = dedupe.duplicate;
@@ -177,7 +239,10 @@ app.post('/zns/zalo-webhook', (req, res) => {
     }
 
     const data = extractZaloData(body);
-    if (isUserIdentityEvent(data.event_name)) {
+    const isOaLifecycleEvent = isUserIdentityEvent(data.event_name) ||
+      data.payload_variant === 'oa_message_delivery' ||
+      String(data.event_name || '').startsWith('oa_send_');
+    if (isOaLifecycleEvent) {
       return handleUserIdentityEvent(body, data, webhookReceivedAt, res);
     }
 
@@ -336,7 +401,7 @@ app.post('/zns/identity/link', requireAdminApiKey, (req, res) => {
 app.post('/zns/send-batch', requireAdminApiKey, async (req, res) => {
   try {
     const { access_token: requestAccessToken, template_id, campaign_id, items } = req.body || {};
-    const access_token = requestAccessToken || process.env.ZALO_ACCESS_TOKEN;
+    const access_token = getAccessToken(requestAccessToken);
     if (!access_token || !template_id || !Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ ok: false, error: 'access_token, template_id, items[] are required' });
     }
@@ -349,6 +414,61 @@ app.post('/zns/send-batch', requireAdminApiKey, async (req, res) => {
     console.error('❌ /zns/send-batch error:', e);
     return res.status(500).json({ ok: false, error: e.message });
   }
+});
+
+// Chỉ trả metadata, tuyệt đối không trả access_token/refresh_token ra API debug.
+app.get('/oauth/zalo/status', requireAdminApiKey, (_, res) => {
+  try { return res.json({ ok: true, token: publicTokenStatus() }); }
+  catch (e) { return res.status(500).json({ ok: false, error: e.message }); }
+});
+
+app.post('/oauth/zalo/refresh', requireAdminApiKey, async (req, res) => {
+  try {
+    const tokenBundle = await refreshAccessToken(req.body?.refresh_token);
+    return res.json({ ok: true, token: publicTokenStatus(tokenBundle) });
+  } catch (e) {
+    console.error('❌ Zalo OAuth refresh error:', e.message);
+    return res.status(502).json({ ok: false, error: e.message, code: e.code || null });
+  }
+});
+
+function handleOaApiError(res, error) {
+  console.error('❌ Zalo OA API error:', error.message);
+  return res.status(502).json({
+    ok: false,
+    error: error.message,
+    code: error.code || null,
+    zalo: error.response_data || null
+  });
+}
+
+// Quyền "Quản lý trường thông tin người dùng" là REST API, không phải webhook event.
+app.get('/oa/user-fields', requireAdminApiKey, async (req, res) => {
+  try {
+    const data = await listUserFields(getAccessToken(), req.query || {});
+    return res.json({ ok: true, data });
+  } catch (e) { return handleOaApiError(res, e); }
+});
+
+app.post('/oa/user-fields', requireAdminApiKey, async (req, res) => {
+  try {
+    const data = await createUserField(getAccessToken(), req.body || {});
+    return res.json({ ok: true, data });
+  } catch (e) { return handleOaApiError(res, e); }
+});
+
+app.put('/oa/user-fields', requireAdminApiKey, async (req, res) => {
+  try {
+    const data = await updateUserField(getAccessToken(), req.body || {});
+    return res.json({ ok: true, data });
+  } catch (e) { return handleOaApiError(res, e); }
+});
+
+app.delete('/oa/user-fields', requireAdminApiKey, async (req, res) => {
+  try {
+    const data = await deleteUserField(getAccessToken(), req.body || {});
+    return res.json({ ok: true, data });
+  } catch (e) { return handleOaApiError(res, e); }
 });
 
 // =============== DEBUG ===============

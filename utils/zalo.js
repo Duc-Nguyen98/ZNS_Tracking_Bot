@@ -29,9 +29,21 @@ function isUserIdentityEvent(eventName) {
   return name === OA_SEEN_EVENT || name.startsWith('user_send_');
 }
 
+function isOaMessageManagementEvent(eventName) {
+  const name = String(eventName || '');
+  return name === ZNS_RECEIVED_EVENT ||
+    name === OA_SEEN_EVENT ||
+    name.startsWith('user_send_') ||
+    name.startsWith('oa_send_');
+}
+
 function getCorrelationMessageIds(body = {}) {
   const eventName = String(body?.event_name || '');
-  if (eventName === OA_SEEN_EVENT) return getMessageIds(body);
+  if (eventName === OA_SEEN_EVENT ||
+      eventName === ZNS_RECEIVED_EVENT ||
+      eventName.startsWith('oa_send_')) {
+    return getMessageIds(body);
+  }
 
   // Tin nhắn inbound có msg_id mới; chỉ map ZNS/OA gốc khi payload có trường reply/quote.
   const ids = [
@@ -54,8 +66,18 @@ function isVietnamPhone(value) {
   return /^84\d{8,11}$/.test(String(value || ''));
 }
 
-function getEventSemantics(eventName) {
+function getEventSemantics(eventName, payloadVariant = 'other_event') {
   if (eventName === ZNS_RECEIVED_EVENT) {
+    if (payloadVariant === 'oa_message_delivery') {
+      return {
+        event_scope: 'oa_messaging',
+        status: 'received',
+        status_label: 'Người dùng đã nhận tin nhắn OA',
+        read_status: 'not_seen_yet',
+        read_confirmed: false,
+        clicked_status: 'unknown'
+      };
+    }
     return {
       event_scope: 'zns',
       status: 'delivered',
@@ -88,6 +110,17 @@ function getEventSemantics(eventName) {
     };
   }
 
+  if (String(eventName || '').startsWith('oa_send_')) {
+    return {
+      event_scope: 'oa_messaging',
+      status: 'oa_sent',
+      status_label: 'OA đã gửi tin nhắn cho người dùng',
+      read_status: 'not_seen_yet',
+      read_confirmed: false,
+      clicked_status: 'unknown'
+    };
+  }
+
   return {
     event_scope: 'other',
     status: 'other_event',
@@ -102,27 +135,30 @@ function extractZaloData(body = {}) {
   const eventName = normalizeId(body?.event_name);
   const senderId = normalizeId(body?.sender?.id);
   const recipientId = normalizeId(body?.recipient?.id);
-  const userId = normalizeId(body?.user_id) || (isUserIdentityEvent(eventName) ? senderId : null);
+  const deliveryTimeRaw = body?.message?.delivery_time ?? null;
+  const payloadVariant = eventName !== ZNS_RECEIVED_EVENT
+    ? 'other_event'
+    : (deliveryTimeRaw !== null ? 'zns_delivery' : 'oa_message_delivery');
+  const derivedUserId = String(eventName || '').startsWith('oa_send_')
+    ? recipientId
+    : ((isUserIdentityEvent(eventName) || payloadVariant === 'oa_message_delivery') ? senderId : null);
+  const userId = normalizeId(body?.user_id) || derivedUserId;
   const userIdByApp = normalizeId(
     body?.user_id_by_app ||
     body?.sender?.user_id_by_app ||
     body?.recipient?.user_id_by_app
   );
   const messageIds = getMessageIds(body);
-  const semantics = getEventSemantics(eventName);
-  const deliveryTimeRaw = body?.message?.delivery_time ?? null;
+  const semantics = getEventSemantics(eventName, payloadVariant);
   const trackingId = normalizeId(body?.message?.tracking_id || body?.tracking_id);
   const recipientPhone = isVietnamPhone(recipientId) ? recipientId : null;
   const recipientPhoneHash = isSha256(recipientId) ? recipientId : null;
-  const payloadVariant = eventName !== ZNS_RECEIVED_EVENT
-    ? 'other_event'
-    : (deliveryTimeRaw !== null ? 'zns_delivery' : 'generic_message_delivery');
 
   return {
     app_id: normalizeId(body?.app_id),
     event_name: eventName,
     tracked_zns_event: payloadVariant === 'zns_delivery',
-    event_name_supported: isZnsReceivedEvent(eventName),
+    event_name_supported: isOaMessageManagementEvent(eventName),
     payload_variant: payloadVariant,
     ...semantics,
     user_id: userId,
@@ -141,7 +177,7 @@ function extractZaloData(body = {}) {
     timestamp_ms: normalizeTimestampMs(body?.timestamp),
     timestamp: body?.timestamp ? formatTimestamp(body.timestamp) : null,
     message_text: body?.message?.text || null,
-    read_warning: eventName === ZNS_RECEIVED_EVENT
+    read_warning: payloadVariant === 'zns_delivery'
       ? 'Đây là bằng chứng ZNS đã tới thiết bị, không phải bằng chứng người dùng đã mở hoặc đọc.'
       : null
   };
@@ -156,6 +192,7 @@ module.exports = {
   getCorrelationMessageIds,
   isZnsReceivedEvent,
   isUserIdentityEvent,
+  isOaMessageManagementEvent,
   isSha256,
   isVietnamPhone
 };

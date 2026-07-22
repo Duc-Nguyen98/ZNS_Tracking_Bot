@@ -1,0 +1,17 @@
+curl --location 'http://localhost:3002/zns/zalo-webhook' \
+--header 'Content-Type: application/json' \
+--data-raw '{
+  "app_id": "1743556593977626805",
+  "event_name": "oa_send_text",
+  "timestamp": "1784737462633",
+  "sender": {
+    "id": "8885388564519420458"
+  },
+  "recipient": {
+    "id": "579745863508352884"
+  },
+  "message": {
+    "msg_id": "oa-outbound-message-id",
+    "text": "Xin chào từ OA"
+  }
+}'
