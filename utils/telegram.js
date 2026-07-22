@@ -1,26 +1,45 @@
 const axios = require('axios');
 
-async function sendToTelegram(data){
+async function sendToTelegram(data) {
   const token = process.env.TELEGRAM_TOKEN;
   const chatIds = (process.env.CHAT_IDS || '').split(',').map(s => s.trim()).filter(Boolean);
   if (!token || chatIds.length === 0) {
-    console.warn('⚠️ TELEGRAM_TOKEN/CHAT_IDS missing; skip send');
-    return;
+    throw new Error('TELEGRAM_TOKEN/CHAT_IDS missing');
   }
-  const clean = Object.fromEntries(Object.entries(data).filter(([,v]) => v !== undefined));
-  clean.source = clean.phone ? 'phone' : 'user_id';
 
+  const clean = Object.fromEntries(
+    Object.entries(data).filter(([, value]) => value !== undefined)
+  );
   const msg = '📩 Zalo Webhook Data:\n' + JSON.stringify(clean, null, 2);
   const chunks = msg.match(/[\s\S]{1,4000}/g) || [msg];
+  const failures = [];
+  let sent = 0;
 
   for (const chatId of chatIds) {
     for (const chunk of chunks) {
       try {
-        await axios.post(`https://api.telegram.org/bot${token}/sendMessage`, { chat_id: chatId, text: chunk });
-      } catch (e) {
-        console.error('❌ Telegram error:', e.response?.data || e.message);
+        await axios.post(
+          `https://api.telegram.org/bot${token}/sendMessage`,
+          { chat_id: chatId, text: chunk },
+          { timeout: 15000 }
+        );
+        sent += 1;
+      } catch (error) {
+        failures.push({
+          chat_id: chatId,
+          error: error?.response?.data?.description || error.message
+        });
       }
     }
   }
+
+  if (failures.length > 0) {
+    const error = new Error(`Telegram failed for ${failures.length} request(s)`);
+    error.failures = failures;
+    throw error;
+  }
+
+  return { ok: true, sent };
 }
+
 module.exports = { sendToTelegram };
