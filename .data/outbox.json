@@ -103,5 +103,18 @@
     "deliveredAt": null,
     "readStatus": "unavailable",
     "readConfirmed": false
+  },
+  {
+    "phone_id": "84393177289",
+    "template_id": "603674",
+    "campaign_id": "postman-test-603674",
+    "channel": "zns",
+    "tracking_id": "2b4f9abc-393f-4225-a5ba-f2a87fdcc039",
+    "status": "sent",
+    "msgId": "1087278e6d81d3d88a97",
+    "sentAt": 1784746163368,
+    "deliveredAt": null,
+    "readStatus": "unavailable",
+    "readConfirmed": false
   }
 ]
