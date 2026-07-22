@@ -1,19 +1,26 @@
 const express = require('express');
 require('dotenv').config();
 
-const { extractZaloData, getMessageIds } = require('./utils/zalo');
+const {
+  extractZaloData, getMessageIds, getCorrelationMessageIds, isUserIdentityEvent
+} = require('./utils/zalo');
 const { sendToTelegram } = require('./utils/telegram');
 const { sendTemplateBatch } = require('./services/zns');
+const { normalizePhoneE164VN } = require('./utils/format');
 
 const {
   getOutbox, getOutboxView, listOutbox, markDelivered,
   setUidForPhone, getPhoneByUid,
+  upsertUserIdentity, linkUserIdentityToPhone,
+  getUserIdentity, getUserIdentityByPhone, listUserIdentities,
+  attachIdentityToOutbox, rememberWebhookEvent,
 } = require('./store');
 
 const app = express();
 const port = process.env.PORT || 3002;
 const EXPECTED_ZALO_APP_ID = process.env.ZALO_APP_ID || '';
 const FORWARD_OTHER_EVENTS = process.env.FORWARD_OTHER_EVENTS === 'true';
+const CAPTURE_OA_IDENTITIES = process.env.CAPTURE_OA_IDENTITIES !== 'false';
 const TELEGRAM_MAX_RETRIES = Math.max(1, Number(process.env.TELEGRAM_MAX_RETRIES || 3));
 const path = require('path');
 app.use(express.static(path.join(__dirname, 'public'))); // public chứa file zalo_verifier....html
@@ -21,6 +28,7 @@ app.use(express.static(path.join(__dirname, 'public'))); // public chứa file z
 app.use(express.json({ limit: '1mb' }));
 
 app.get('/health', (_, res) => res.status(200).send('ok'));
+app.get('/', (_, res) => res.status(200).send('Service ready.'));
 
 // ======= queue gửi Telegram để không bị flood =======
 const messageQueue = [];
@@ -30,6 +38,94 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 function enqueueTelegram(data) {
   messageQueue.push({ data, attempts: 0 });
   void processQueue();
+}
+
+function findOutboxMatches(messageIds = []) {
+  return messageIds
+    .map(msgId => ({ msgId, meta: getOutbox(msgId) }))
+    .filter(item => item.meta);
+}
+
+function buildIdentityEventKey(data) {
+  return [
+    data.event_name,
+    data.user_id_by_app || data.user_id || data.sender_id || 'unknown-user',
+    data.timestamp_ms || 'unknown-time',
+    ...(data.msg_ids || [])
+  ].join(':');
+}
+
+function handleUserIdentityEvent(body, data, webhookReceivedAt, res) {
+  if (!CAPTURE_OA_IDENTITIES) {
+    if (FORWARD_OTHER_EVENTS) enqueueTelegram(data);
+    return res.status(200).send('IDENTITY_CAPTURE_DISABLED');
+  }
+
+  if (!data.user_id && !data.user_id_by_app) {
+    data.validation_error = 'Webhook tương tác OA không có user_id/sender.id hoặc user_id_by_app.';
+    enqueueTelegram(data);
+    return res.status(200).send('MISSING_USER_ID');
+  }
+
+  const correlationIds = getCorrelationMessageIds(body);
+  const matches = findOutboxMatches(correlationIds);
+  const matchedPhones = [...new Set(matches.map(item => item.meta.phone_id).filter(Boolean))];
+  let phoneId = null;
+  let phoneLinkSource = null;
+
+  if (matchedPhones.length === 1) {
+    phoneId = matchedPhones[0];
+    phoneLinkSource = data.event_name === 'user_seen_message'
+      ? 'seen_message_id'
+      : 'reply_reference_message_id';
+  } else if (matchedPhones.length > 1) {
+    data.identity_link_warning = 'Nhiều SĐT khớp msg_ids; không tự gán UID để tránh sai người.';
+  }
+
+  if (!phoneId) {
+    phoneId = getPhoneByUid(data.user_id_by_app) || getPhoneByUid(data.user_id);
+    if (phoneId) phoneLinkSource = 'existing_uid_cache';
+  }
+
+  const identity = upsertUserIdentity({
+    user_id: data.user_id,
+    user_id_by_app: data.user_id_by_app,
+    phone_id: phoneId,
+    phone_link_source: phoneLinkSource,
+    event_name: data.event_name,
+    message_id: data.msg_id,
+    message_text: data.message_text,
+    app_id: data.app_id,
+    at: data.timestamp_ms || webhookReceivedAt
+  });
+
+  if (phoneId) {
+    if (data.user_id) setUidForPhone(phoneId, data.user_id);
+    if (data.user_id_by_app) setUidForPhone(phoneId, data.user_id_by_app);
+  }
+
+  const attachedRecords = matches.map(item => attachIdentityToOutbox(item.msgId, {
+    user_id: data.user_id,
+    user_id_by_app: data.user_id_by_app,
+    event_name: data.event_name,
+    at: data.timestamp_ms || webhookReceivedAt
+  })).filter(Boolean);
+
+  data.identity_record = identity;
+  data.identity_linked_to_phone = Boolean(identity?.phone_id);
+  data.identity_link_source = identity?.phone_link_source || null;
+  data.correlated_outbox_records = attachedRecords;
+  data.webhook_received_at = webhookReceivedAt;
+  data.notice = data.event_name === 'user_seen_message'
+    ? 'Đã thu ID từ sự kiện xem tin nhắn OA; không dùng event này để khẳng định ZNS đã được đọc.'
+    : 'Đã thu ID từ tin nhắn người dùng gửi cho OA.';
+
+  const dedupe = rememberWebhookEvent(buildIdentityEventKey(data), webhookReceivedAt);
+  data.webhook_duplicate = dedupe.duplicate;
+  if (!dedupe.duplicate) enqueueTelegram(data);
+  else console.log('♻️ Bỏ qua webhook tương tác OA trùng:', data.event_name, data.user_id || data.user_id_by_app);
+
+  return res.status(200).send('IDENTITY_CAPTURED');
 }
 
 async function processQueue() {
@@ -81,8 +177,12 @@ app.post('/zns/zalo-webhook', (req, res) => {
     }
 
     const data = extractZaloData(body);
+    if (isUserIdentityEvent(data.event_name)) {
+      return handleUserIdentityEvent(body, data, webhookReceivedAt, res);
+    }
+
     if (!data.event_name_supported) {
-      data.notice = 'Không phải user_received_message.';
+      data.notice = 'Không phải sự kiện ZNS delivery hoặc tương tác người dùng OA được hỗ trợ.';
       if (FORWARD_OTHER_EVENTS) enqueueTelegram(data);
       return res.status(200).send('IGNORED_EVENT');
     }
@@ -206,6 +306,32 @@ app.post('/zns/outbox', requireAdminApiKey, (req, res) => {
   }
 });
 
+// ======= liên kết thủ công UID <-> SĐT khi webhook reply không tham chiếu msg_id gốc =======
+app.post('/zns/identity/link', requireAdminApiKey, (req, res) => {
+  try {
+    const { phone, phone_id, user_id, user_id_by_app } = req.body || {};
+    const normalizedPhone = normalizePhoneE164VN(phone_id || phone);
+    if (!normalizedPhone || (!user_id && !user_id_by_app)) {
+      return res.status(400).json({
+        ok: false,
+        error: 'phone/phone_id và ít nhất một trong user_id, user_id_by_app là bắt buộc'
+      });
+    }
+    const identity = linkUserIdentityToPhone({
+      phone_id: normalizedPhone,
+      user_id,
+      user_id_by_app,
+      phone_link_source: 'manual_api',
+      event_name: 'manual_identity_link',
+      at: Date.now()
+    });
+    return res.json({ ok: true, identity });
+  } catch (e) {
+    console.error('❌ /zns/identity/link error:', e);
+    return res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
 // ======= gửi batch thật (gọi Zalo API) & auto-save message_id =======
 app.post('/zns/send-batch', requireAdminApiKey, async (req, res) => {
   try {
@@ -242,7 +368,27 @@ app.get('/debug/outbox/:msgId', requireAdminApiKey, (req, res) => {
   }
 });
 
-app.use((_, res) => res.status(200).send('Service ready.'));
+app.get('/debug/identities', requireAdminApiKey, (_, res) => {
+  try { res.json({ ok: true, identities: listUserIdentities() }); }
+  catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+app.get('/debug/identities/by-phone/:phone', requireAdminApiKey, (req, res) => {
+  try {
+    const identity = getUserIdentityByPhone(normalizePhoneE164VN(req.params.phone));
+    if (!identity) return res.status(404).json({ ok: false, error: 'identity not found' });
+    return res.json({ ok: true, identity });
+  } catch (e) { return res.status(500).json({ ok: false, error: e.message }); }
+});
+app.get('/debug/identities/:id', requireAdminApiKey, (req, res) => {
+  try {
+    const identity = getUserIdentity(req.params.id);
+    if (!identity) return res.status(404).json({ ok: false, error: 'identity not found' });
+    return res.json({ ok: true, identity });
+  } catch (e) { return res.status(500).json({ ok: false, error: e.message }); }
+});
+
+// Không trả 200 cho URL sai: tránh Zalo tưởng webhook đã xử lý khi cấu hình thiếu path.
+app.use((req, res) => res.status(404).json({ ok: false, error: 'Route not found', path: req.originalUrl }));
 
 app.listen(port, () => {
   console.log(`✅ Server chạy tại http://localhost:${port}`);

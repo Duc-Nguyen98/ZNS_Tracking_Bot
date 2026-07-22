@@ -1,0 +1,8 @@
+curl --location 'http://localhost:3002/zns/identity/link' \
+--header 'Content-Type: application/json' \
+--header 'x-api-key: REPLACE_WITH_ADMIN_API_KEY' \
+--data-raw '{
+  "phone": "0393177289",
+  "user_id": "579745863508352884",
+  "user_id_by_app": "3212390946636715297"
+}'

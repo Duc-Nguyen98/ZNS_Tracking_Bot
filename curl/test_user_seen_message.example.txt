@@ -1,0 +1,19 @@
+curl --location 'http://localhost:3002/zns/zalo-webhook' \
+--header 'Content-Type: application/json' \
+--data-raw '{
+  "app_id": "1743556593977626805",
+  "user_id_by_app": "3212390946636715297",
+  "event_name": "user_seen_message",
+  "timestamp": "1784737462633",
+  "sender": {
+    "id": "579745863508352884"
+  },
+  "recipient": {
+    "id": "8885388564519420458"
+  },
+  "message": {
+    "msg_ids": [
+      "REPLACE_WITH_REAL_OUTBOX_MESSAGE_ID"
+    ]
+  }
+}'

@@ -1,6 +1,7 @@
 const { formatTimestamp, normalizeTimestampMs } = require('./format');
 
 const ZNS_RECEIVED_EVENT = 'user_received_message';
+const OA_SEEN_EVENT = 'user_seen_message';
 
 function normalizeId(value) {
   if (value === undefined || value === null || value === '') return null;
@@ -21,6 +22,28 @@ function getMessageIds(body = {}) {
 
 function isZnsReceivedEvent(eventName) {
   return String(eventName || '') === ZNS_RECEIVED_EVENT;
+}
+
+function isUserIdentityEvent(eventName) {
+  const name = String(eventName || '');
+  return name === OA_SEEN_EVENT || name.startsWith('user_send_');
+}
+
+function getCorrelationMessageIds(body = {}) {
+  const eventName = String(body?.event_name || '');
+  if (eventName === OA_SEEN_EVENT) return getMessageIds(body);
+
+  // Tin nhắn inbound có msg_id mới; chỉ map ZNS/OA gốc khi payload có trường reply/quote.
+  const ids = [
+    body?.message?.reply_to_msg_id,
+    body?.message?.reply_to_message_id,
+    body?.message?.quote_msg_id,
+    body?.message?.quote_message?.msg_id,
+    body?.message?.reply_to?.msg_id,
+    body?.reply_to_msg_id,
+    body?.quote_message?.msg_id
+  ];
+  return [...new Set(ids.map(normalizeId).filter(Boolean))];
 }
 
 function isSha256(value) {
@@ -79,7 +102,7 @@ function extractZaloData(body = {}) {
   const eventName = normalizeId(body?.event_name);
   const senderId = normalizeId(body?.sender?.id);
   const recipientId = normalizeId(body?.recipient?.id);
-  const userId = normalizeId(body?.user_id);
+  const userId = normalizeId(body?.user_id) || (isUserIdentityEvent(eventName) ? senderId : null);
   const userIdByApp = normalizeId(
     body?.user_id_by_app ||
     body?.sender?.user_id_by_app ||
@@ -110,6 +133,7 @@ function extractZaloData(body = {}) {
     recipient_phone_hash: recipientPhoneHash,
     msg_id: messageIds[0] || null,
     msg_ids: messageIds,
+    correlation_msg_ids: getCorrelationMessageIds(body),
     receiver_device: body?.receiver_device || null,
     tracking_id: trackingId,
     delivery_time_raw: deliveryTimeRaw,
@@ -125,10 +149,13 @@ function extractZaloData(body = {}) {
 
 module.exports = {
   ZNS_RECEIVED_EVENT,
+  OA_SEEN_EVENT,
   extractZaloData,
   getEventSemantics,
   getMessageIds,
+  getCorrelationMessageIds,
   isZnsReceivedEvent,
+  isUserIdentityEvent,
   isSha256,
   isVietnamPhone
 };

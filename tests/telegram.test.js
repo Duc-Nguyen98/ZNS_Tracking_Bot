@@ -45,3 +45,29 @@ test('sendToTelegram throw lỗi để queue có thể retry', async t => {
     /Telegram failed/
   );
 });
+
+test('Telegram phân biệt sự kiện thu UID từ tin nhắn người dùng', async t => {
+  const originalPost = axios.post;
+  const oldToken = process.env.TELEGRAM_TOKEN;
+  const oldChatIds = process.env.CHAT_IDS;
+  let sentText = '';
+  t.after(() => {
+    axios.post = originalPost;
+    process.env.TELEGRAM_TOKEN = oldToken;
+    process.env.CHAT_IDS = oldChatIds;
+  });
+
+  process.env.TELEGRAM_TOKEN = 'test-token';
+  process.env.CHAT_IDS = '123';
+  axios.post = async (_, payload) => {
+    sentText = payload.text;
+    return { data: { ok: true } };
+  };
+
+  await sendToTelegram({
+    event_name: 'user_send_text',
+    user_id: '579745863508352884'
+  });
+  assert.match(sentText, /đã thu ID/);
+  assert.match(sentText, /579745863508352884/);
+});

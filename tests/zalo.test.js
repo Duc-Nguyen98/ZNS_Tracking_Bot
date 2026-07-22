@@ -1,7 +1,9 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { extractZaloData, getMessageIds } = require('../utils/zalo');
+const {
+  extractZaloData, getMessageIds, getCorrelationMessageIds, isUserIdentityEvent
+} = require('../utils/zalo');
 
 test('ZNS user_received_message lấy delivery_time và số điện thoại recipient', () => {
   const body = {
@@ -51,6 +53,8 @@ test('payload nút Test không có delivery_time không tự nhận là ZNS th�
 test('user_seen_message thuộc OA Messaging, không phải ZNS tracking', () => {
   const result = extractZaloData({
     event_name: 'user_seen_message',
+    sender: { id: '579745863508352884' },
+    user_id_by_app: '3212390946636715297',
     message: { msg_ids: ['oa-message-1'] }
   });
 
@@ -58,6 +62,41 @@ test('user_seen_message thuộc OA Messaging, không phải ZNS tracking', () =>
   assert.equal(result.tracked_zns_event, false);
   assert.equal(result.event_scope, 'oa_messaging');
   assert.equal(result.status, 'seen');
+  assert.equal(result.user_id, '579745863508352884');
+  assert.equal(result.user_id_by_app, '3212390946636715297');
+  assert.deepEqual(result.correlation_msg_ids, ['oa-message-1']);
+});
+
+test('user_send_text thu ID từ sender nhưng không lấy msg_id inbound để map ZNS', () => {
+  const body = {
+    app_id: '1743556593977626805',
+    event_name: 'user_send_text',
+    timestamp: '1784737463000',
+    sender: { id: '579745863508352884' },
+    recipient: { id: '8885388564519420458' },
+    user_id_by_app: '3212390946636715297',
+    message: { msg_id: 'inbound-message-1', text: 'Tôi đã nhận được' }
+  };
+  const result = extractZaloData(body);
+
+  assert.equal(isUserIdentityEvent(result.event_name), true);
+  assert.equal(result.user_id, '579745863508352884');
+  assert.equal(result.user_id_by_app, '3212390946636715297');
+  assert.equal(result.message_text, 'Tôi đã nhận được');
+  assert.deepEqual(getCorrelationMessageIds(body), []);
+});
+
+test('user_send_text chỉ map tin gốc khi có reply/quote message id', () => {
+  const body = {
+    event_name: 'user_send_text',
+    sender: { id: '579745863508352884' },
+    message: {
+      msg_id: 'inbound-message-2',
+      text: 'Đồng ý',
+      quote_message: { msg_id: 'zns-message-1' }
+    }
+  };
+  assert.deepEqual(getCorrelationMessageIds(body), ['zns-message-1']);
 });
 
 test('recipient SHA-256 không bị hiểu nhầm thành UID hoặc số điện thoại', () => {

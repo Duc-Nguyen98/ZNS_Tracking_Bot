@@ -66,3 +66,51 @@ test('delivery đến trước send mapping vẫn reconcile được mà không 
   assert.equal(reconciled.phone_id, '84393177289');
   assert.equal(reconciled.delivered_at, 1784737462633);
 });
+
+test('lưu user_id và user_id_by_app từ tương tác OA rồi liên kết với SĐT', () => {
+  const captured = store.upsertUserIdentity({
+    user_id: '579745863508352884',
+    user_id_by_app: '3212390946636715297',
+    event_name: 'user_send_text',
+    message_id: 'inbound-1',
+    message_text: 'Đã nhận',
+    at: 1784737463000
+  });
+  assert.equal(captured.phone_id, null);
+  assert.equal(captured.user_id, '579745863508352884');
+
+  const linked = store.linkUserIdentityToPhone({
+    phone_id: '84393177289',
+    user_id: '579745863508352884',
+    user_id_by_app: '3212390946636715297',
+    phone_link_source: 'manual_api',
+    at: 1784737464000
+  });
+  assert.equal(linked.phone_id, '84393177289');
+  assert.equal(store.getPhoneByUid('579745863508352884'), '84393177289');
+  assert.equal(store.getPhoneByUid('3212390946636715297'), '84393177289');
+  assert.equal(store.getUserIdentityByPhone('84393177289').user_id_by_app, '3212390946636715297');
+});
+
+test('user_seen_message gắn UID vào outbox nhưng không đổi ZNS thành read', () => {
+  store.putOutbox('msg-seen-1', {
+    phone_id: '84393177289',
+    channel: 'zns',
+    status: 'delivered'
+  });
+  const record = store.attachIdentityToOutbox('msg-seen-1', {
+    user_id: '579745863508352884',
+    user_id_by_app: '3212390946636715297',
+    event_name: 'user_seen_message',
+    at: 1784737465000
+  });
+  assert.equal(record.user_id, '579745863508352884');
+  assert.equal(record.oa_seen_at, 1784737465000);
+  assert.equal(record.read_status, 'unavailable');
+  assert.equal(record.read_confirmed, false);
+});
+
+test('dedupe webhook tương tác OA theo event key', () => {
+  assert.equal(store.rememberWebhookEvent('user_send_text:u1:t1:m1').duplicate, false);
+  assert.equal(store.rememberWebhookEvent('user_send_text:u1:t1:m1').duplicate, true);
+});

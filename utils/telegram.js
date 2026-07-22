@@ -10,9 +10,14 @@ async function sendToTelegram(data) {
   const clean = Object.fromEntries(
     Object.entries(data).filter(([, value]) => value !== undefined)
   );
-  const title = clean.event_name === 'user_received_message'
-    ? '📬 ZNS đã tới thiết bị (chưa xác nhận đã đọc):\n'
-    : '📩 Zalo Webhook Data:\n';
+  let title = '📩 Zalo Webhook Data:\n';
+  if (clean.event_name === 'user_received_message') {
+    title = '📬 ZNS đã tới thiết bị (chưa xác nhận đã đọc):\n';
+  } else if (clean.event_name === 'user_seen_message') {
+    title = '👀 Người dùng đã xem tin nhắn OA — đã thu ID:\n';
+  } else if (String(clean.event_name || '').startsWith('user_send_')) {
+    title = '👤 Người dùng nhắn cho OA — đã thu ID:\n';
+  }
   const msg = title + JSON.stringify(clean, null, 2);
   const chunks = msg.match(/[\s\S]{1,4000}/g) || [msg];
   const failures = [];
