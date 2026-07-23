@@ -116,5 +116,70 @@
     "deliveredAt": null,
     "readStatus": "unavailable",
     "readConfirmed": false
+  },
+  {
+    "phone_id": "84393177289",
+    "template_id": "603674",
+    "campaign_id": "postman-test-603674",
+    "channel": "zns",
+    "tracking_id": "db61225c-50fb-42fd-9bf0-2d1c45804e10",
+    "status": "sent",
+    "msgId": "e2332e9bac1112484b07",
+    "sentAt": 1784797637839,
+    "deliveredAt": null,
+    "readStatus": "unavailable",
+    "readConfirmed": false
+  },
+  {
+    "phone_id": "84394884783",
+    "template_id": "603674",
+    "campaign_id": "postman-test-603674",
+    "channel": "zns",
+    "tracking_id": "22f9e049-a3d1-4001-b004-8779a649e03c",
+    "status": "sent",
+    "msgId": "2a768ebca937176e4e21",
+    "sentAt": 1784797731082,
+    "deliveredAt": null,
+    "readStatus": "unavailable",
+    "readConfirmed": false
+  },
+  {
+    "phone_id": "84989638955",
+    "template_id": "603674",
+    "campaign_id": "postman-test-603674",
+    "channel": "zns",
+    "tracking_id": "d909cb10-6fa4-4b55-b967-1f0c5201fe3d",
+    "status": "sent",
+    "msgId": "1eac4c774afcf4a5adea",
+    "sentAt": 1784797762097,
+    "deliveredAt": null,
+    "readStatus": "unavailable",
+    "readConfirmed": false
+  },
+  {
+    "phone_id": "84393177289",
+    "template_id": "603674",
+    "campaign_id": "postman-test-603674",
+    "channel": "zns",
+    "tracking_id": "e3606753-5994-4820-9d53-41834109dde6",
+    "status": "sent",
+    "msgId": "6930f38fa5001b594216",
+    "sentAt": 1784798689371,
+    "deliveredAt": null,
+    "readStatus": "unavailable",
+    "readConfirmed": false
+  },
+  {
+    "phone_id": "84979834662",
+    "template_id": "603674",
+    "campaign_id": "postman-test-603674",
+    "channel": "zns",
+    "tracking_id": "d6f72632-e2df-4840-9f41-d5ace4ca51ee",
+    "status": "sent",
+    "msgId": "050079ba1336ad6ff420",
+    "sentAt": 1784798876623,
+    "deliveredAt": null,
+    "readStatus": "unavailable",
+    "readConfirmed": false
   }
 ]
